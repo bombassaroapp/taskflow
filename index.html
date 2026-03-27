@@ -1175,7 +1175,7 @@ document.getElementById('app-screen').addEventListener('click', () => {
   // Register Service Worker for PWA
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js')
+      navigator.serviceWorker.register('/taskflow/sw.js')
         .then(() => console.log('TaskFlow PWA pronto!'))
         .catch(err => console.log('SW error:', err));
     });
