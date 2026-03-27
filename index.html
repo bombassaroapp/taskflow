@@ -536,12 +536,55 @@
       </div>
       <div class="field">
         <label for="t-notify" class="notify-toggle">
-          <input type="checkbox" id="t-notify" onchange="updateNotifyLabel(this)" />
-          <span class="notify-box off" id="notify-box">✉ Lembrete por email <strong id="notify-status">OFF</strong></span>
+          <input type="checkbox" id="t-notify" onchange="updateNotifyLabel(this)" checked />
+          <span class="notify-box on" id="notify-box">✉ Lembrete por email <strong id="notify-status">ON</strong></span>
         </label>
       </div>
     </div>
     <button class="sheet-submit" onclick="addTask()">Adicionar Tarefa →</button>
+  </div>
+</div>
+
+<!-- ══════════════════ EDIT TASK SHEET ══════════════════ -->
+<div class="add-sheet-overlay" id="edit-sheet-overlay" onclick="closeEditSheet(event)">
+  <div class="add-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">✏️ Editar Tarefa</div>
+    <div class="sheet-grid">
+      <div class="field">
+        <label>Título *</label>
+        <input type="text" id="e-title" placeholder="O que precisa ser feito?" />
+      </div>
+      <div class="field">
+        <label>Descrição</label>
+        <textarea id="e-desc" rows="2" placeholder="Detalhes opcionais..."></textarea>
+      </div>
+      <div class="sheet-row">
+        <div class="field">
+          <label>Data</label>
+          <input type="date" id="e-date" />
+        </div>
+        <div class="field">
+          <label>Horário</label>
+          <input type="time" id="e-time" />
+        </div>
+      </div>
+      <div class="field">
+        <label>Prioridade</label>
+        <select id="e-priority">
+          <option value="media">⬤ Média</option>
+          <option value="alta">⬤ Alta</option>
+          <option value="baixa">⬤ Baixa</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="e-notify" class="notify-toggle">
+          <input type="checkbox" id="e-notify" onchange="updateEditNotifyLabel(this)" />
+          <span class="notify-box off" id="e-notify-box">✉ Lembrete por email <strong id="e-notify-status">OFF</strong></span>
+        </label>
+      </div>
+    </div>
+    <button class="sheet-submit" onclick="saveEditTask()">Salvar Alterações ✓</button>
   </div>
 </div>
 
@@ -798,6 +841,111 @@ function showView(view) {
 /* ════════════════════════════════
    TASKS
 ════════════════════════════════ */
+/* ════════════════════════════════
+   EDIT TASK
+════════════════════════════════ */
+let editingTaskId = null;
+
+function openEditSheet(id) {
+  const task = tasks.find(t => t.id === id);
+  if (!task) return;
+  editingTaskId = id;
+
+  document.getElementById('e-title').value = task.title;
+  document.getElementById('e-desc').value = task.desc || '';
+  document.getElementById('e-date').value = task.date || '';
+  document.getElementById('e-time').value = task.time || '';
+  document.getElementById('e-priority').value = task.priority || 'media';
+
+  const notifyEl = document.getElementById('e-notify');
+  notifyEl.checked = task.notify || false;
+  updateEditNotifyLabel(notifyEl);
+
+  document.getElementById('edit-sheet-overlay').classList.add('open');
+}
+
+function closeEditSheet(e) {
+  if (!e || e.target === document.getElementById('edit-sheet-overlay')) {
+    document.getElementById('edit-sheet-overlay').classList.remove('open');
+    editingTaskId = null;
+  }
+}
+
+function updateEditNotifyLabel(cb) {
+  const box = document.getElementById('e-notify-box');
+  const status = document.getElementById('e-notify-status');
+  if (cb.checked) {
+    box.className = 'notify-box on';
+    status.textContent = 'ON';
+  } else {
+    box.className = 'notify-box off';
+    status.textContent = 'OFF';
+  }
+}
+
+function saveEditTask() {
+  if (!editingTaskId) return;
+  const title = document.getElementById('e-title').value.trim();
+  if (!title) { toast('Informe o título da tarefa!', 'error'); return; }
+
+  const idx = tasks.findIndex(t => t.id === editingTaskId);
+  if (idx === -1) return;
+
+  // Cancel existing reminder
+  if (reminderTimers[editingTaskId]) {
+    clearTimeout(reminderTimers[editingTaskId]);
+    delete reminderTimers[editingTaskId];
+  }
+
+  tasks[idx] = {
+    ...tasks[idx],
+    title,
+    desc: document.getElementById('e-desc').value.trim(),
+    date: document.getElementById('e-date').value,
+    time: document.getElementById('e-time').value,
+    priority: document.getElementById('e-priority').value,
+    notify: document.getElementById('e-notify').checked,
+  };
+
+  saveTasks(currentUser.username, tasks);
+  renderTasks();
+
+  document.getElementById('edit-sheet-overlay').classList.remove('open');
+
+  const task = tasks[idx];
+  if (task.notify) {
+    const userObj = getCurrentUserObj();
+    if (!userObj.email) {
+      toast('✅ Tarefa atualizada! ⚠️ Configure um email no perfil para lembretes.', 'error');
+    } else if (!task.date) {
+      toast('✅ Tarefa atualizada! ⚠️ Defina data/hora para agendar o lembrete.', 'error');
+    } else {
+      const dt = new Date(`${task.date}T${task.time || '08:00'}:00`);
+      const diff = dt - new Date();
+      if (diff <= 0) {
+        toast('✅ Tarefa atualizada! ⚠️ Data/hora já passou — lembrete não agendado.', 'error');
+      } else {
+        const dateStr = formatDate(task.date) + (task.time ? ' às ' + task.time : '');
+        toast(`✅ Tarefa atualizada! ⏰ Lembrete agendado para ${dateStr}`, 'success');
+        if (diff > 15 * 60 * 1000) {
+          setTimeout(async () => {
+            const current = getTasks(currentUser.username).find(t => t.id === task.id);
+            if (current && !current.done) await sendWarningEmail(task, userObj.email);
+          }, diff - 15 * 60 * 1000);
+        }
+        reminderTimers[task.id] = setTimeout(async () => {
+          const current = getTasks(currentUser.username).find(t => t.id === task.id);
+          if (current && !current.done) await sendEmailNow(task, userObj.email);
+          delete reminderTimers[task.id];
+        }, diff);
+      }
+    }
+  } else {
+    toast('✅ Tarefa atualizada!', 'success');
+  }
+  editingTaskId = null;
+}
+
 function addTask() {
   const title = document.getElementById('t-title').value.trim();
   if (!title) { toast('Informe o título da tarefa!', 'error'); return; }
@@ -823,7 +971,7 @@ function addTask() {
   document.getElementById('t-desc').value = '';
   document.getElementById('t-date').value = '';
   document.getElementById('t-time').value = '';
-  document.getElementById('t-notify').checked = false;
+  document.getElementById('t-notify').checked = true;
   updateNotifyLabel(document.getElementById('t-notify'));
   document.getElementById('add-sheet-overlay').classList.remove('open');
 
@@ -872,6 +1020,10 @@ function openAddSheet() {
   // Set today as default date
   const d = document.getElementById('t-date');
   if (!d.value) d.value = new Date().toISOString().split('T')[0];
+  // Default notify ON
+  const cb = document.getElementById('t-notify');
+  cb.checked = true;
+  updateNotifyLabel(cb);
   setTimeout(() => document.getElementById('t-title').focus(), 300);
 }
 
@@ -933,7 +1085,7 @@ function renderList(containerId, list, isDone) {
           </div>
         </div>
         <div class="task-actions">
-          ${isDone ? `<button class="revert-btn" onclick="toggleDone(${t.id})">↩ Reabrir</button>` : ''}
+          ${isDone ? `<button class="revert-btn" onclick="toggleDone(${t.id})">↩ Reabrir</button>` : `<button class="icon-btn" onclick="openEditSheet(${t.id})" title="Editar">✏️</button>`}
           <button class="icon-btn del" onclick="deleteTask(${t.id})" title="Excluir">🗑</button>
         </div>
       </div>
