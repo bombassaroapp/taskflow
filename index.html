@@ -667,22 +667,20 @@ function addTask() {
   document.getElementById('t-time').value = '';
   document.getElementById('t-notify').checked = false;
 
-  toast('Tarefa adicionada!', 'success');
-
   if (task.notify) {
     const userObj = getCurrentUserObj();
     if (!userObj.email) {
-      toast('Configure um email no seu perfil para receber lembretes.', 'error');
+      toast('✅ Tarefa adicionada! ⚠️ Configure um email no perfil para lembretes.', 'error');
     } else if (!task.date) {
-      toast('⚠️ Defina uma data/hora para agendar o lembrete por email.', 'error');
+      toast('✅ Tarefa adicionada! ⚠️ Defina data/hora para agendar o lembrete.', 'error');
     } else {
       const dt = new Date(`${task.date}T${task.time || '08:00'}:00`);
       const diff = dt - new Date();
       if (diff <= 0) {
-        toast('⚠️ A data/hora já passou. O lembrete não foi agendado.', 'error');
+        toast('✅ Tarefa adicionada! ⚠️ Data/hora já passou — lembrete não agendado.', 'error');
       } else {
         const dateStr = formatDate(task.date) + (task.time ? ' às ' + task.time : '');
-        toast(`⏰ Lembrete agendado para ${dateStr}`, 'success');
+        toast(`✅ Tarefa adicionada! ⏰ Lembrete agendado para ${dateStr}`, 'success');
         reminderTimers[task.id] = setTimeout(async () => {
           const current = getTasks(currentUser.username).find(t => t.id === task.id);
           if (current && !current.done) {
@@ -692,6 +690,8 @@ function addTask() {
         }, diff);
       }
     }
+  } else {
+    toast('✅ Tarefa adicionada!', 'success');
   }
 }
 
