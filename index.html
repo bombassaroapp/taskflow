@@ -784,51 +784,41 @@ function saveProfile() {
 }
 
 /* ════════════════════════════════
-   FORMSUBMIT CONFIG
+   WEB3FORMS CONFIG
 ════════════════════════════════ */
-const FORMSUBMIT_EMAIL = 'bombassaro@gmail.com';
+const WEB3FORMS_KEY = 'af72e07c-d358-475f-b04b-7a4a51455ecc';
 
 /* ════════════════════════════════
-   EMAIL REMINDER (FormSubmit)
+   EMAIL REMINDER (Web3Forms)
 ════════════════════════════════ */
 async function scheduleEmailReminder(task, email) {
   const userObj = getCurrentUserObj();
   toast('✉ Enviando lembrete por email...', 'success');
 
-  const body = `Olá, ${userObj.name}!
-
-Você tem uma tarefa pendente no TaskFlow:
-
-📌 Tarefa: ${task.title}
-📅 Data: ${task.date ? formatDate(task.date) : 'Sem data'}
-⏰ Horário: ${task.time || 'Sem horário'}
-📝 Descrição: ${task.desc || '—'}
-
-Acesse o TaskFlow para marcar como concluída.`;
+  const body = `Olá, ${userObj.name}!\n\nVocê tem uma tarefa pendente no TaskFlow:\n\n📌 Tarefa: ${task.title}\n📅 Data: ${task.date ? formatDate(task.date) : 'Sem data'}\n⏰ Horário: ${task.time || 'Sem horário'}\n📝 Descrição: ${task.desc || '—'}\n\nAcesse o TaskFlow para marcar como concluída.`;
 
   try {
-    const res = await fetch(`https://formsubmit.co/ajax/${FORMSUBMIT_EMAIL}`, {
+    const res = await fetch('https://api.web3forms.com/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({
-        _subject: `⏰ Lembrete TaskFlow: ${task.title}`,
-        _replyto: email,
-        name: userObj.name,
+        access_key: WEB3FORMS_KEY,
+        subject: `⏰ Lembrete TaskFlow: ${task.title}`,
+        from_name: 'TaskFlow',
         email: email,
         message: body,
-        _template: 'box',
-        _captcha: 'false'
+        botcheck: false
       })
     });
     const data = await res.json();
-    if (data.success === 'true' || data.success === true) {
+    if (data.success) {
       toast(`📧 Email enviado para ${email}!`, 'success');
     } else {
-      throw new Error(JSON.stringify(data));
+      throw new Error(data.message || JSON.stringify(data));
     }
   } catch (err) {
-    console.error('FormSubmit error:', err);
-    toast(`❌ Erro ao enviar email. Tente novamente.`, 'error');
+    console.error('Web3Forms error:', err);
+    toast(`❌ Erro ao enviar email: ${err.message || 'Tente novamente.'}`, 'error');
   }
 }
 
@@ -852,28 +842,27 @@ async function testEmail() {
   const btn = document.getElementById('test-email-btn');
   btn.textContent = '⏳ Enviando...'; btn.disabled = true;
   try {
-    const res = await fetch(`https://formsubmit.co/ajax/${FORMSUBMIT_EMAIL}`, {
+    const res = await fetch('https://api.web3forms.com/submit', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify({
-        _subject: '📧 Teste de Email — TaskFlow',
-        _replyto: email,
-        name: getCurrentUserObj().name,
+        access_key: WEB3FORMS_KEY,
+        subject: '📧 Teste de Email — TaskFlow',
+        from_name: 'TaskFlow',
         email: email,
         message: 'Este é um email de teste do TaskFlow. Se você recebeu este email, as notificações estão funcionando corretamente! ✅',
-        _template: 'box',
-        _captcha: 'false'
+        botcheck: false
       })
     });
     const data = await res.json();
-    if (data.success === 'true' || data.success === true) {
+    if (data.success) {
       showMsg('profile-success', '✅ Email de teste enviado! Verifique sua caixa de entrada (e spam).', true);
       toast('📧 Email de teste enviado para ' + email, 'success');
     } else {
-      throw new Error(JSON.stringify(data));
+      throw new Error(data.message || JSON.stringify(data));
     }
   } catch(err) {
-    console.error('FormSubmit test error:', err);
+    console.error('Web3Forms test error:', err);
     showMsg('profile-error', '❌ Erro ao enviar: ' + (err?.message || 'Tente novamente.'));
   }
   btn.textContent = '📧 Testar envio de email'; btn.disabled = false;
