@@ -438,18 +438,7 @@
       <button class="nav-btn" id="nav-done" onclick="showView('done')">✓ Concluídas</button>
     </nav>
     <div class="topbar-user">
-      <div class="dropdown">
-        <div class="user-avatar" id="user-avatar-btn" onclick="toggleDropdown()"></div>
-        <div class="dropdown-menu" id="user-dropdown">
-          <div class="dropdown-user-info">
-            <div class="dropdown-user-name" id="dd-name"></div>
-            <div class="dropdown-user-email" id="dd-email"></div>
-          </div>
-          <button class="dropdown-item" onclick="openProfile()">⚙️ Configurações do perfil</button>
-          <div class="dropdown-sep"></div>
-          <button class="dropdown-item red" onclick="doLogout()">🚪 Sair</button>
-        </div>
-      </div>
+      <button class="user-avatar" id="user-avatar-btn" onclick="openUserSheet()" style="border:none;"></button>
     </div>
   </header>
 
@@ -486,6 +475,31 @@
       <span class="icon">✓</span>Concluídas
     </button>
   </nav>
+</div>
+
+<!-- ══════════════════ USER SHEET ══════════════════ -->
+<div class="add-sheet-overlay" id="user-sheet-overlay" onclick="closeUserSheet(event)">
+  <div class="add-sheet">
+    <div class="sheet-handle"></div>
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:24px;">
+      <div style="width:52px;height:52px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;color:#0d0f14;" id="us-avatar"></div>
+      <div>
+        <div style="font-size:18px;font-weight:700;" id="us-name"></div>
+        <div style="font-size:13px;color:var(--muted);" id="us-email"></div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <button onclick="closeUserSheet();setTimeout(openProfile,200);" style="display:flex;align-items:center;gap:14px;padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:14px;font-family:inherit;font-size:16px;font-weight:600;color:var(--text);cursor:pointer;width:100%;text-align:left;">
+        <span style="font-size:22px;">⚙️</span> Configurações do perfil
+      </button>
+      <button onclick="closeUserSheet();setTimeout(openProfile,200);" style="display:flex;align-items:center;gap:14px;padding:16px;background:var(--surface2);border:1px solid var(--border);border-radius:14px;font-family:inherit;font-size:16px;font-weight:600;color:var(--text);cursor:pointer;width:100%;text-align:left;">
+        <span style="font-size:22px;">✉️</span> Email para notificações
+      </button>
+      <button onclick="closeUserSheet();setTimeout(doLogout,200);" style="display:flex;align-items:center;gap:14px;padding:16px;background:rgba(232,122,122,.08);border:1px solid rgba(232,122,122,.2);border-radius:14px;font-family:inherit;font-size:16px;font-weight:600;color:var(--danger);cursor:pointer;width:100%;text-align:left;">
+        <span style="font-size:22px;">🚪</span> Sair
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- ══════════════════ ADD TASK SHEET ══════════════════ -->
@@ -562,9 +576,6 @@
     </div>
   </div>
 </div>
-
-<!-- DROPDOWN OVERLAY -->
-<div id="dropdown-overlay" onclick="toggleDropdown(false)" style="display:none;position:fixed;inset:0;z-index:499;"></div>
 
 <!-- TOAST CONTAINER -->
 <div id="toast"></div>
@@ -676,7 +687,6 @@ function doLogout() {
   showScreen('login-screen');
   document.getElementById('login-user').value = '';
   document.getElementById('login-pass').value = '';
-  toggleDropdown(false);
 }
 
 /* ════════════════════════════════
@@ -689,8 +699,7 @@ function loadApp() {
 
   const initials = currentUser.name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
   document.getElementById('user-avatar-btn').textContent = initials;
-  document.getElementById('dd-name').textContent = currentUser.name;
-  document.getElementById('dd-email').textContent = currentUser.email || 'Email não configurado';
+  // user sheet updated on open
 
   showScreen('app-screen');
   showView('tasks');
@@ -892,7 +901,6 @@ function renderList(containerId, list, isDone) {
    PROFILE MODAL
 ════════════════════════════════ */
 function openProfile() {
-  toggleDropdown(false);
   const u = getCurrentUserObj();
   document.getElementById('p-name').value = u.name;
   document.getElementById('p-email').value = u.email || '';
@@ -925,8 +933,6 @@ function saveProfile() {
 
   const initials = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
   document.getElementById('user-avatar-btn').textContent = initials;
-  document.getElementById('dd-name').textContent = name;
-  document.getElementById('dd-email').textContent = email || 'Email não configurado';
 
   showMsg('profile-success', 'Perfil salvo com sucesso!', true);
   setTimeout(closeProfile, 1500);
@@ -1111,16 +1117,21 @@ function toast(msg, type = 'success') {
   setTimeout(() => { item.style.opacity = '0'; item.style.transition = 'opacity .3s'; setTimeout(() => item.remove(), 300); }, 4000);
 }
 
-function toggleDropdown(force) {
-  const menu = document.getElementById('user-dropdown');
-  const overlay = document.getElementById('dropdown-overlay');
-  if (force === false) {
-    menu.classList.remove('open');
-    if (overlay) overlay.style.display = 'none';
-    return;
+function toggleDropdown(force) { /* deprecated */ }
+
+function openUserSheet() {
+  const u = getCurrentUserObj();
+  const initials = u.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+  document.getElementById('us-avatar').textContent = initials;
+  document.getElementById('us-name').textContent = u.name;
+  document.getElementById('us-email').textContent = u.email || 'Email não configurado';
+  document.getElementById('user-sheet-overlay').classList.add('open');
+}
+
+function closeUserSheet(e) {
+  if (!e || e.target === document.getElementById('user-sheet-overlay')) {
+    document.getElementById('user-sheet-overlay').classList.remove('open');
   }
-  const isOpen = menu.classList.toggle('open');
-  if (overlay) overlay.style.display = isOpen ? 'block' : 'none';
 }
 
 document.addEventListener('click', (e) => {
