@@ -621,8 +621,9 @@ function loadApp() {
   showView('tasks');
   renderTasks();
 
-  // Check for due task reminders
+  // Schedule reminders for all pending tasks
   checkReminders();
+  rescheduleAllReminders();
 }
 
 /* ════════════════════════════════
@@ -676,6 +677,9 @@ function addTask() {
       scheduleEmailReminder(task, userObj.email);
     }
   }
+
+  // Reschedule all reminders after adding
+  rescheduleAllReminders();
 }
 
 function toggleDone(id) {
@@ -788,14 +792,15 @@ function saveProfile() {
 ════════════════════════════════ */
 const WEB3FORMS_KEY = 'af72e07c-d358-475f-b04b-7a4a51455ecc';
 
-/* ════════════════════════════════
-   EMAIL REMINDER (Web3Forms)
-════════════════════════════════ */
-async function scheduleEmailReminder(task, email) {
-  const userObj = getCurrentUserObj();
-  toast('✉ Enviando lembrete por email...', 'success');
+// Stores active reminder timeouts: { taskId: timeoutId }
+const reminderTimers = {};
 
-  const body = `Olá, ${userObj.name}!\n\nVocê tem uma tarefa pendente no TaskFlow:\n\n📌 Tarefa: ${task.title}\n📅 Data: ${task.date ? formatDate(task.date) : 'Sem data'}\n⏰ Horário: ${task.time || 'Sem horário'}\n📝 Descrição: ${task.desc || '—'}\n\nAcesse o TaskFlow para marcar como concluída.`;
+/* ════════════════════════════════
+   SEND EMAIL NOW (Web3Forms)
+════════════════════════════════ */
+async function sendEmailNow(task, email) {
+  const userObj = getCurrentUserObj();
+  const body = `Olá, ${userObj.name}!\n\nEste é o lembrete da sua tarefa no TaskFlow:\n\n📌 Tarefa: ${task.title}\n📅 Data: ${task.date ? formatDate(task.date) : 'Sem data'}\n⏰ Horário: ${task.time || 'Sem horário'}\n📝 Descrição: ${task.desc || '—'}\n\nAcesse o TaskFlow para marcar como concluída.`;
 
   try {
     const res = await fetch('https://api.web3forms.com/submit', {
@@ -812,25 +817,81 @@ async function scheduleEmailReminder(task, email) {
     });
     const data = await res.json();
     if (data.success) {
-      toast(`📧 Email enviado para ${email}!`, 'success');
+      toast(`📧 Lembrete enviado para ${email}!`, 'success');
     } else {
       throw new Error(data.message || JSON.stringify(data));
     }
   } catch (err) {
     console.error('Web3Forms error:', err);
-    toast(`❌ Erro ao enviar email: ${err.message || 'Tente novamente.'}`, 'error');
+    toast(`❌ Erro ao enviar lembrete: ${err.message || 'Tente novamente.'}`, 'error');
   }
 }
 
-function checkReminders() {
+/* ════════════════════════════════
+   SCHEDULE REMINDER AT TASK TIME
+════════════════════════════════ */
+function scheduleEmailReminder(task, email) {
+  // Cancel existing timer for this task if any
+  if (reminderTimers[task.id]) {
+    clearTimeout(reminderTimers[task.id]);
+    delete reminderTimers[task.id];
+  }
+
+  if (!task.date) {
+    toast('⚠️ Defina uma data e horário para agendar o lembrete.', 'error');
+    return;
+  }
+
+  const taskDateTime = new Date(`${task.date}T${task.time || '08:00'}:00`);
   const now = new Date();
-  tasks.filter(t => !t.done && t.date && t.notify).forEach(t => {
+  const diff = taskDateTime - now;
+
+  if (diff <= 0) {
+    toast('⚠️ A data/hora da tarefa já passou. O lembrete não foi agendado.', 'error');
+    return;
+  }
+
+  // Max setTimeout is ~24.8 days; for longer, re-schedule closer to the time
+  const MAX_TIMEOUT = 2147483647;
+  const delay = Math.min(diff, MAX_TIMEOUT);
+
+  reminderTimers[task.id] = setTimeout(async () => {
+    // Only send if task is still pending
+    const current = getTasks(currentUser.username).find(t => t.id === task.id);
+    if (current && !current.done) {
+      await sendEmailNow(task, email);
+    }
+    delete reminderTimers[task.id];
+  }, delay);
+
+  const dateStr = formatDate(task.date) + (task.time ? ' às ' + task.time : '');
+  toast(`⏰ Lembrete agendado para ${dateStr}`, 'success');
+}
+
+/* ════════════════════════════════
+   RESCHEDULE ALL ON APP LOAD
+════════════════════════════════ */
+function rescheduleAllReminders() {
+  const userObj = getCurrentUserObj();
+  if (!userObj.email) return;
+
+  // Cancel all existing timers
+  Object.keys(reminderTimers).forEach(id => {
+    clearTimeout(reminderTimers[id]);
+    delete reminderTimers[id];
+  });
+
+  // Re-schedule pending tasks with notify + future date
+  tasks.filter(t => !t.done && t.notify && t.date).forEach(t => {
     const dt = new Date(`${t.date}T${t.time || '08:00'}:00`);
-    const diffMin = (dt - now) / 60000;
-    if (diffMin > 0 && diffMin <= 30) {
-      toast(`⏰ Lembrete: "${t.title}" em ${Math.round(diffMin)} min!`, 'success');
+    if (dt > new Date()) {
+      scheduleEmailReminder(t, userObj.email);
     }
   });
+}
+
+function checkReminders() {
+  // Timers are handled by rescheduleAllReminders() on app load
 }
 
 /* ════════════════════════════════
