@@ -555,6 +555,7 @@
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost" id="test-email-btn" onclick="testEmail()">📧 Testar email</button>
+      <button class="btn btn-ghost" onclick="testNotification()">🔔 Testar notificação</button>
       <button class="btn btn-primary" onclick="saveProfile()">Salvar</button>
       <button class="btn btn-ghost" onclick="closeProfile()">Cancelar</button>
     </div>
@@ -1011,6 +1012,41 @@ function checkReminders() {
 /* ════════════════════════════════
    UTILS
 ════════════════════════════════ */
+async function testNotification() {
+  if (!('Notification' in window)) {
+    showMsg('profile-error', '❌ Seu navegador não suporta notificações.');
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    showMsg('profile-error', '❌ Notificações bloqueadas. Vá em Ajustes → TaskFlow → Notificações e ative.');
+    return;
+  }
+  if (Notification.permission === 'default') {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') {
+      showMsg('profile-error', '❌ Permissão negada. Ative nas configurações do iPhone.');
+      return;
+    }
+  }
+  // Try SW notification first
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: 'SHOW_NOTIFICATION',
+      title: '🔔 TaskFlow — Teste',
+      body: 'As notificações estão funcionando corretamente! ✅',
+      icon: 'icon-192.png'
+    });
+    showMsg('profile-success', '✅ Notificação enviada! Deve aparecer em instantes.', true);
+  } else {
+    // Fallback
+    new Notification('🔔 TaskFlow — Teste', {
+      body: 'As notificações estão funcionando! ✅',
+      icon: 'icon-192.png'
+    });
+    showMsg('profile-success', '✅ Notificação enviada!', true);
+  }
+}
+
 async function testEmail() {
   const email = document.getElementById('p-email').value.trim();
   if (!email) { showMsg('profile-error', 'Preencha o email antes de testar.'); return; }
