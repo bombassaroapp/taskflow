@@ -673,13 +673,26 @@ function addTask() {
     const userObj = getCurrentUserObj();
     if (!userObj.email) {
       toast('Configure um email no seu perfil para receber lembretes.', 'error');
+    } else if (!task.date) {
+      toast('⚠️ Defina uma data/hora para agendar o lembrete por email.', 'error');
     } else {
-      scheduleEmailReminder(task, userObj.email);
+      const dt = new Date(`${task.date}T${task.time || '08:00'}:00`);
+      const diff = dt - new Date();
+      if (diff <= 0) {
+        toast('⚠️ A data/hora já passou. O lembrete não foi agendado.', 'error');
+      } else {
+        const dateStr = formatDate(task.date) + (task.time ? ' às ' + task.time : '');
+        toast(`⏰ Lembrete agendado para ${dateStr}`, 'success');
+        reminderTimers[task.id] = setTimeout(async () => {
+          const current = getTasks(currentUser.username).find(t => t.id === task.id);
+          if (current && !current.done) {
+            await sendEmailNow(task, userObj.email);
+          }
+          delete reminderTimers[task.id];
+        }, diff);
+      }
     }
   }
-
-  // Reschedule all reminders after adding
-  rescheduleAllReminders();
 }
 
 function toggleDone(id) {
@@ -881,11 +894,18 @@ function rescheduleAllReminders() {
     delete reminderTimers[id];
   });
 
-  // Re-schedule pending tasks with notify + future date
+  // Re-schedule silently (no toasts) — only on app load
   tasks.filter(t => !t.done && t.notify && t.date).forEach(t => {
     const dt = new Date(`${t.date}T${t.time || '08:00'}:00`);
-    if (dt > new Date()) {
-      scheduleEmailReminder(t, userObj.email);
+    const diff = dt - new Date();
+    if (diff > 0) {
+      reminderTimers[t.id] = setTimeout(async () => {
+        const current = getTasks(currentUser.username).find(tk => tk.id === t.id);
+        if (current && !current.done) {
+          await sendEmailNow(t, userObj.email);
+        }
+        delete reminderTimers[t.id];
+      }, diff);
     }
   });
 }
