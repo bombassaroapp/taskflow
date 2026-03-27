@@ -166,6 +166,11 @@
   .checkbox-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
   .checkbox-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
   .checkbox-row label { font-size: 13px; color: var(--muted); cursor: pointer; font-weight: 400; text-transform: none; letter-spacing: 0; }
+  .notify-toggle { cursor: pointer; display: block; width: 100%; }
+  .notify-toggle input[type=checkbox] { display: none; }
+  .notify-box { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; border: 2px dashed var(--border); color: var(--muted); transition: all .2s; }
+  .notify-box.on { border-color: var(--accent); color: var(--accent); background: rgba(232,201,122,.08); border-style: solid; }
+  .notify-box strong { margin-left: auto; font-size: 11px; letter-spacing: 1px; }
   .form-actions { display: flex; justify-content: flex-end; margin-top: 20px; }
   .btn-add { background: var(--accent); color: #0d0f14; padding: 11px 28px; }
   .btn-add:hover { background: #f0d48a; box-shadow: 0 8px 24px rgba(232,201,122,.25); }
@@ -422,10 +427,10 @@
             </select>
           </div>
           <div class="form-group-inline" style="display:flex;align-items:flex-end;">
-            <div class="checkbox-row">
-              <input type="checkbox" id="t-notify" />
-              <label for="t-notify">Enviar lembrete por email</label>
-            </div>
+            <label for="t-notify" class="notify-toggle" id="notify-label">
+              <input type="checkbox" id="t-notify" onchange="updateNotifyLabel(this)" />
+              <span class="notify-box off" id="notify-box">✉ Lembrete por email &nbsp;<strong id="notify-status">OFF</strong></span>
+            </label>
           </div>
         </div>
         <div class="form-actions">
@@ -477,7 +482,9 @@
       <label>Confirmar nova senha</label>
       <input type="password" id="p-pass2" placeholder="••••••••" />
     </div>
-    <div class="modal-actions">
+    <div class="modal-actions" style="flex-wrap:wrap;gap:8px;">
+      <button class="btn btn-ghost" id="test-email-btn" onclick="testEmail()" style="font-size:12px;padding:9px 16px;">📧 Testar envio de email</button>
+      <div style="flex:1"></div>
       <button class="btn btn-ghost" onclick="closeProfile()">Cancelar</button>
       <button class="btn btn-primary" style="width:auto" onclick="saveProfile()">Salvar</button>
     </div>
@@ -780,7 +787,7 @@ function saveProfile() {
    EMAILJS CONFIG
 ════════════════════════════════ */
 const EMAILJS_PUBLIC_KEY  = 'Urdi88BMbe_Bij12N';
-const EMAILJS_SERVICE_ID  = 'service_pkw3fcr';
+const EMAILJS_SERVICE_ID  = 'service_zzf72y1';
 const EMAILJS_TEMPLATE_ID = 'template_rbwx7iz';
 
 (function initEmailJS() {
@@ -826,6 +833,41 @@ function checkReminders() {
 /* ════════════════════════════════
    UTILS
 ════════════════════════════════ */
+async function testEmail() {
+  const email = document.getElementById('p-email').value.trim();
+  if (!email) { showMsg('profile-error', 'Preencha o email antes de testar.'); return; }
+  const btn = document.getElementById('test-email-btn');
+  btn.textContent = '⏳ Enviando...'; btn.disabled = true;
+  try {
+    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+      to_email: email,
+      user_name: getCurrentUserObj().name,
+      task_title: 'Tarefa de Teste',
+      task_date: new Date().toLocaleDateString('pt-BR'),
+      task_time: new Date().toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'}),
+      task_desc: 'Este é um email de teste do TaskFlow.'
+    });
+    showMsg('profile-success', '✅ Email de teste enviado! Verifique sua caixa de entrada (e spam).', true);
+    toast('📧 Email de teste enviado para ' + email, 'success');
+  } catch(err) {
+    console.error('EmailJS test error:', err);
+    showMsg('profile-error', '❌ Erro: ' + (err?.text || err?.message || JSON.stringify(err)));
+  }
+  btn.textContent = '📧 Testar envio de email'; btn.disabled = false;
+}
+
+function updateNotifyLabel(cb) {
+  const box = document.getElementById('notify-box');
+  const status = document.getElementById('notify-status');
+  if (cb.checked) {
+    box.className = 'notify-box on';
+    status.textContent = 'ON';
+  } else {
+    box.className = 'notify-box off';
+    status.textContent = 'OFF';
+  }
+}
+
 function showMsg(id, msg, isSuccess = false) {
   const el = document.getElementById(id);
   el.textContent = msg;
