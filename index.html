@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TaskFlow — Gerenciador de Tarefas</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #161921;
+    --surface2: #1e2230;
+    --border: #2a2f3e;
+    --accent: #e8c97a;
+    --accent2: #7ac8e8;
+    --danger: #e87a7a;
+    --success: #7ae8a8;
+    --text: #e8eaf0;
+    --muted: #7a8099;
+    --radius: 14px;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); overflow-x: hidden; }
+
+  /* ── NOISE OVERLAY ── */
+  body::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    opacity: 0.5;
+  }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── SCREENS ── */
+  .screen { display: none; min-height: 100vh; position: relative; z-index: 1; }
+  .screen.active { display: flex; }
+
+  /* ══════════════════════════════════════
+     AUTH SCREENS
+  ══════════════════════════════════════ */
+  .auth-wrap {
+    flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: radial-gradient(ellipse 80% 60% at 50% 0%, #1a1f2e 0%, var(--bg) 70%);
+  }
+  .auth-card {
+    width: 100%; max-width: 420px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 24px; padding: 48px 40px;
+    box-shadow: 0 32px 80px rgba(0,0,0,.6);
+    animation: fadeUp .4s ease;
+  }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:none; } }
+  .auth-logo {
+    font-family: 'DM Serif Display', serif; font-size: 28px; color: var(--accent);
+    margin-bottom: 4px; letter-spacing: -.5px;
+  }
+  .auth-sub { font-size: 13px; color: var(--muted); margin-bottom: 36px; }
+  .auth-title { font-size: 20px; font-weight: 600; margin-bottom: 24px; }
+  .form-group { margin-bottom: 18px; }
+  .form-group label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 8px; }
+  .form-group input {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 16px; font-family: inherit; font-size: 14px; color: var(--text);
+    outline: none; transition: border-color .2s, box-shadow .2s;
+  }
+  .form-group input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(232,201,122,.12); }
+  .form-group input::placeholder { color: var(--muted); }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 12px 24px; border-radius: 10px; font-family: inherit; font-size: 14px;
+    font-weight: 600; cursor: pointer; border: none; transition: all .2s; white-space: nowrap;
+  }
+  .btn-primary { background: var(--accent); color: #0d0f14; width: 100%; }
+  .btn-primary:hover { background: #f0d48a; transform: translateY(-1px); box-shadow: 0 8px 24px rgba(232,201,122,.3); }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-danger:hover { background: #f09090; }
+  .auth-link { text-align: center; margin-top: 20px; font-size: 13px; color: var(--muted); }
+  .auth-link a { color: var(--accent); text-decoration: none; font-weight: 500; cursor: pointer; }
+  .auth-link a:hover { text-decoration: underline; }
+  .error-msg { background: rgba(232,122,122,.12); border: 1px solid rgba(232,122,122,.3); color: var(--danger); font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; display: none; }
+  .success-msg { background: rgba(122,232,168,.12); border: 1px solid rgba(122,232,168,.3); color: var(--success); font-size: 13px; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; display: none; }
+
+  /* ══════════════════════════════════════
+     APP LAYOUT
+  ══════════════════════════════════════ */
+  #app-screen { flex-direction: column; }
+  .topbar {
+    position: sticky; top: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 32px; height: 64px;
+    background: rgba(13,15,20,.85); backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar-logo { font-family: 'DM Serif Display', serif; font-size: 22px; color: var(--accent); }
+  .topbar-nav { display: flex; gap: 4px; }
+  .nav-btn {
+    padding: 7px 16px; border-radius: 8px; font-family: inherit; font-size: 13px;
+    font-weight: 500; cursor: pointer; border: none; background: transparent; color: var(--muted);
+    transition: all .2s; display: flex; align-items: center; gap: 6px;
+  }
+  .nav-btn:hover { background: var(--surface2); color: var(--text); }
+  .nav-btn.active { background: var(--surface2); color: var(--accent); }
+  .topbar-user { display: flex; align-items: center; gap: 10px; }
+  .user-avatar {
+    width: 36px; height: 36px; border-radius: 50%; background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 13px; color: #0d0f14; cursor: pointer;
+    transition: transform .2s, box-shadow .2s;
+  }
+  .user-avatar:hover { transform: scale(1.05); box-shadow: 0 0 0 3px rgba(232,201,122,.3); }
+
+  /* DROPDOWN MENU */
+  .dropdown { position: relative; }
+  .dropdown-menu {
+    position: absolute; top: calc(100% + 10px); right: 0;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 8px; min-width: 240px;
+    box-shadow: 0 16px 48px rgba(0,0,0,.5);
+    display: none; z-index: 200;
+    animation: dropIn .15s ease;
+  }
+  @keyframes dropIn { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:none; } }
+  .dropdown-menu.open { display: block; }
+  .dropdown-user-info { padding: 12px 12px 14px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+  .dropdown-user-name { font-weight: 600; font-size: 14px; }
+  .dropdown-user-email { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .dropdown-item {
+    display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 8px;
+    font-size: 13px; color: var(--text); cursor: pointer; transition: background .15s; border: none;
+    background: transparent; width: 100%; font-family: inherit;
+  }
+  .dropdown-item:hover { background: var(--surface2); }
+  .dropdown-item.red { color: var(--danger); }
+  .dropdown-sep { height: 1px; background: var(--border); margin: 8px 0; }
+
+  /* MAIN CONTENT */
+  .main { flex: 1; max-width: 800px; width: 100%; margin: 0 auto; padding: 40px 24px; }
+  .view { display: none; }
+  .view.active { display: block; animation: fadeUp .3s ease; }
+
+  /* NEW TASK CARD */
+  .new-task-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 28px 32px; margin-bottom: 32px;
+  }
+  .new-task-card h2 {
+    font-family: 'DM Serif Display', serif; font-size: 20px; color: var(--accent);
+    margin-bottom: 20px;
+  }
+  .task-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .task-form-grid .span2 { grid-column: span 2; }
+  .form-group-inline label { display: block; font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 6px; }
+  .form-group-inline input, .form-group-inline textarea, .form-group-inline select {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 14px; font-family: inherit; font-size: 13px; color: var(--text);
+    outline: none; transition: border-color .2s; resize: none;
+  }
+  .form-group-inline input:focus, .form-group-inline textarea:focus, .form-group-inline select:focus {
+    border-color: var(--accent);
+  }
+  .form-group-inline select option { background: var(--surface2); }
+  .checkbox-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+  .checkbox-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+  .checkbox-row label { font-size: 13px; color: var(--muted); cursor: pointer; font-weight: 400; text-transform: none; letter-spacing: 0; }
+  .form-actions { display: flex; justify-content: flex-end; margin-top: 20px; }
+  .btn-add { background: var(--accent); color: #0d0f14; padding: 11px 28px; }
+  .btn-add:hover { background: #f0d48a; box-shadow: 0 8px 24px rgba(232,201,122,.25); }
+
+  /* SECTION HEADER */
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .section-title { font-family: 'DM Serif Display', serif; font-size: 22px; color: var(--text); }
+  .badge { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--surface2); color: var(--muted); margin-left: 8px; }
+  .badge.accent { background: rgba(232,201,122,.15); color: var(--accent); }
+
+  /* TASK LIST */
+  .task-list { display: flex; flex-direction: column; gap: 10px; }
+  .task-empty { text-align: center; padding: 48px 24px; color: var(--muted); font-size: 14px; }
+  .task-empty .icon { font-size: 40px; margin-bottom: 12px; }
+
+  .task-item {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 20px; display: flex; align-items: flex-start; gap: 14px;
+    transition: border-color .2s, transform .15s, box-shadow .2s;
+    animation: fadeUp .3s ease;
+  }
+  .task-item:hover { border-color: var(--border); box-shadow: 0 4px 20px rgba(0,0,0,.3); transform: translateY(-1px); }
+  .task-item.done { opacity: .55; }
+  .task-item.done .task-title { text-decoration: line-through; }
+
+  .task-check {
+    width: 22px; height: 22px; min-width: 22px; border-radius: 50%;
+    border: 2px solid var(--border); background: transparent; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; margin-top: 1px;
+    transition: all .2s;
+  }
+  .task-check:hover { border-color: var(--accent); background: rgba(232,201,122,.08); }
+  .task-check.checked { border-color: var(--success); background: var(--success); }
+  .task-check.checked::after { content: '✓'; color: #0d0f14; font-size: 12px; font-weight: 700; }
+
+  .task-body { flex: 1; min-width: 0; }
+  .task-title { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+  .task-desc { font-size: 13px; color: var(--muted); margin-bottom: 8px; white-space: pre-wrap; }
+  .task-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .task-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px; border-radius: 99px; font-size: 11px; font-weight: 500;
+    background: var(--surface2); color: var(--muted);
+  }
+  .task-tag.date { color: var(--accent2); background: rgba(122,200,232,.1); }
+  .task-tag.priority-alta { color: var(--danger); background: rgba(232,122,122,.1); }
+  .task-tag.priority-media { color: var(--accent); background: rgba(232,201,122,.1); }
+  .task-tag.priority-baixa { color: var(--success); background: rgba(122,232,168,.1); }
+  .task-tag.email-notify { color: #b8a0e8; background: rgba(184,160,232,.1); }
+
+  .task-actions { display: flex; gap: 4px; margin-left: auto; }
+  .icon-btn {
+    width: 30px; height: 30px; border-radius: 7px; background: transparent; border: none;
+    cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center;
+    color: var(--muted); transition: all .2s;
+  }
+  .icon-btn:hover { background: var(--surface2); color: var(--text); }
+  .icon-btn.del:hover { color: var(--danger); }
+
+  /* PROFILE MODAL */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); backdrop-filter: blur(8px);
+    z-index: 300; align-items: center; justify-content: center; padding: 24px;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 36px; max-width: 480px; width: 100%;
+    box-shadow: 0 32px 80px rgba(0,0,0,.6);
+    animation: fadeUp .3s ease;
+  }
+  .modal h3 { font-family: 'DM Serif Display', serif; font-size: 22px; margin-bottom: 24px; color: var(--accent); }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
+
+  /* TOAST */
+  #toast {
+    position: fixed; bottom: 28px; right: 28px; z-index: 999;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .toast-item {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 18px; font-size: 13px; font-weight: 500; color: var(--text);
+    box-shadow: 0 8px 32px rgba(0,0,0,.4);
+    animation: toastIn .3s ease; max-width: 320px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  @keyframes toastIn { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:none; } }
+  .toast-item.success { border-color: rgba(122,232,168,.4); }
+  .toast-item.error { border-color: rgba(232,122,122,.4); }
+
+  /* DONE VIEW */
+  .done-task-item { border-color: rgba(122,232,168,.15); }
+  .revert-btn { font-size: 11px; padding: 4px 10px; border-radius: 6px; background: rgba(122,232,168,.1); color: var(--success); border: 1px solid rgba(122,232,168,.2); cursor: pointer; transition: all .2s; }
+  .revert-btn:hover { background: rgba(122,232,168,.2); }
+
+  @media (max-width: 600px) {
+    .task-form-grid { grid-template-columns: 1fr; }
+    .task-form-grid .span2 { grid-column: span 1; }
+    .topbar { padding: 0 16px; }
+    .main { padding: 24px 16px; }
+    .auth-card { padding: 36px 24px; }
+    .new-task-card { padding: 20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════ LOGIN ══════════════════ -->
+<div id="login-screen" class="screen active">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-logo">TaskFlow</div>
+      <div class="auth-sub">Gerencie seu dia com clareza</div>
+      <div class="auth-title">Entrar</div>
+      <div class="error-msg" id="login-error"></div>
+      <div class="form-group">
+        <label>Usuário</label>
+        <input type="text" id="login-user" placeholder="Ex: admin" />
+      </div>
+      <div class="form-group">
+        <label>Senha</label>
+        <input type="password" id="login-pass" placeholder="••••••••" />
+      </div>
+      <button class="btn btn-primary" onclick="doLogin()">Entrar</button>
+      <div class="auth-link"><a onclick="showScreen('forgot-screen')">Esqueci minha senha</a></div>
+      <div class="auth-link">Não tem conta? <a onclick="showScreen('register-screen')">Cadastrar-se</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ REGISTER ══════════════════ -->
+<div id="register-screen" class="screen">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-logo">TaskFlow</div>
+      <div class="auth-sub">Crie sua conta grátis</div>
+      <div class="auth-title">Cadastro</div>
+      <div class="error-msg" id="reg-error"></div>
+      <div class="success-msg" id="reg-success"></div>
+      <div class="form-group">
+        <label>Nome completo</label>
+        <input type="text" id="reg-name" placeholder="Seu nome" />
+      </div>
+      <div class="form-group">
+        <label>Usuário</label>
+        <input type="text" id="reg-user" placeholder="Ex: joaosilva" />
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="reg-email" placeholder="seu@email.com" />
+      </div>
+      <div class="form-group">
+        <label>Senha</label>
+        <input type="password" id="reg-pass" placeholder="Mínimo 6 caracteres" />
+      </div>
+      <div class="form-group">
+        <label>Confirmar senha</label>
+        <input type="password" id="reg-pass2" placeholder="Repita a senha" />
+      </div>
+      <button class="btn btn-primary" onclick="doRegister()">Criar conta</button>
+      <div class="auth-link">Já tem conta? <a onclick="showScreen('login-screen')">Entrar</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ FORGOT PASSWORD ══════════════════ -->
+<div id="forgot-screen" class="screen">
+  <div class="auth-wrap">
+    <div class="auth-card">
+      <div class="auth-logo">TaskFlow</div>
+      <div class="auth-sub">Recuperar acesso</div>
+      <div class="auth-title">Esqueci minha senha</div>
+      <div class="error-msg" id="forgot-error"></div>
+      <div class="success-msg" id="forgot-success"></div>
+      <div class="form-group">
+        <label>Usuário</label>
+        <input type="text" id="forgot-user" placeholder="Seu nome de usuário" />
+      </div>
+      <div class="form-group">
+        <label>Nova senha</label>
+        <input type="password" id="forgot-new" placeholder="Mínimo 6 caracteres" />
+      </div>
+      <div class="form-group">
+        <label>Confirmar nova senha</label>
+        <input type="password" id="forgot-new2" placeholder="Repita a nova senha" />
+      </div>
+      <button class="btn btn-primary" onclick="doResetPassword()">Redefinir senha</button>
+      <div class="auth-link"><a onclick="showScreen('login-screen')">← Voltar ao login</a></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════ APP ══════════════════ -->
+<div id="app-screen" class="screen">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="topbar-logo">TaskFlow</div>
+    <nav class="topbar-nav">
+      <button class="nav-btn active" id="nav-tasks" onclick="showView('tasks')">
+        ✦ Tarefas
+      </button>
+      <button class="nav-btn" id="nav-done" onclick="showView('done')">
+        ✓ Concluídas
+      </button>
+    </nav>
+    <div class="topbar-user">
+      <div class="dropdown">
+        <div class="user-avatar" id="user-avatar-btn" onclick="toggleDropdown()"></div>
+        <div class="dropdown-menu" id="user-dropdown">
+          <div class="dropdown-user-info">
+            <div class="dropdown-user-name" id="dd-name"></div>
+            <div class="dropdown-user-email" id="dd-email"></div>
+          </div>
+          <button class="dropdown-item" onclick="openProfile()">⚙️ Configurações do perfil</button>
+          <div class="dropdown-sep"></div>
+          <button class="dropdown-item red" onclick="doLogout()">🚪 Sair</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- VIEW: TAREFAS -->
+    <div class="view active" id="view-tasks">
+      <!-- NEW TASK -->
+      <div class="new-task-card">
+        <h2>+ Nova Tarefa</h2>
+        <div class="task-form-grid">
+          <div class="form-group-inline span2">
+            <label>Título</label>
+            <input type="text" id="t-title" placeholder="O que precisa ser feito?" />
+          </div>
+          <div class="form-group-inline span2">
+            <label>Descrição</label>
+            <textarea id="t-desc" rows="2" placeholder="Detalhes opcionais..."></textarea>
+          </div>
+          <div class="form-group-inline">
+            <label>Data</label>
+            <input type="date" id="t-date" />
+          </div>
+          <div class="form-group-inline">
+            <label>Horário</label>
+            <input type="time" id="t-time" />
+          </div>
+          <div class="form-group-inline">
+            <label>Prioridade</label>
+            <select id="t-priority">
+              <option value="media">Média</option>
+              <option value="alta">Alta</option>
+              <option value="baixa">Baixa</option>
+            </select>
+          </div>
+          <div class="form-group-inline" style="display:flex;align-items:flex-end;">
+            <div class="checkbox-row">
+              <input type="checkbox" id="t-notify" />
+              <label for="t-notify">Enviar lembrete por email</label>
+            </div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-add" onclick="addTask()">Adicionar Tarefa →</button>
+        </div>
+      </div>
+
+      <!-- TASK LIST -->
+      <div class="section-header">
+        <div class="section-title">Pendentes <span class="badge accent" id="pending-count">0</span></div>
+      </div>
+      <div class="task-list" id="task-list">
+        <div class="task-empty"><div class="icon">📋</div>Nenhuma tarefa pendente. Adicione uma acima!</div>
+      </div>
+    </div>
+
+    <!-- VIEW: CONCLUÍDAS -->
+    <div class="view" id="view-done">
+      <div class="section-header">
+        <div class="section-title">Concluídas <span class="badge" id="done-count">0</span></div>
+      </div>
+      <div class="task-list" id="done-list">
+        <div class="task-empty"><div class="icon">🎉</div>Nenhuma tarefa concluída ainda.</div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ══════════════════ PROFILE MODAL ══════════════════ -->
+<div class="modal-overlay" id="profile-modal">
+  <div class="modal">
+    <h3>⚙️ Configurações do Perfil</h3>
+    <div class="error-msg" id="profile-error"></div>
+    <div class="success-msg" id="profile-success"></div>
+    <div class="form-group">
+      <label>Nome</label>
+      <input type="text" id="p-name" />
+    </div>
+    <div class="form-group">
+      <label>Email para notificações</label>
+      <input type="email" id="p-email" placeholder="Email que receberá os lembretes" />
+    </div>
+    <div class="form-group">
+      <label>Nova senha (deixe em branco para manter)</label>
+      <input type="password" id="p-pass" placeholder="••••••••" />
+    </div>
+    <div class="form-group">
+      <label>Confirmar nova senha</label>
+      <input type="password" id="p-pass2" placeholder="••••••••" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeProfile()">Cancelar</button>
+      <button class="btn btn-primary" style="width:auto" onclick="saveProfile()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div id="toast"></div>
+
+<script>
+/* ════════════════════════════════
+   STORAGE
+════════════════════════════════ */
+const STORAGE_KEYS = { users: 'tf_users', session: 'tf_session', tasks: 'tf_tasks' };
+
+function getUsers() {
+  const d = localStorage.getItem(STORAGE_KEYS.users);
+  if (d) return JSON.parse(d);
+  // Default admin
+  const defaults = [{ username: 'admin', name: 'Administrador', email: '', password: '@Vaquinha12' }];
+  localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(defaults));
+  return defaults;
+}
+function saveUsers(u) { localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(u)); }
+
+function getSession() { const d = localStorage.getItem(STORAGE_KEYS.session); return d ? JSON.parse(d) : null; }
+function saveSession(u) { localStorage.setItem(STORAGE_KEYS.session, JSON.stringify(u)); }
+function clearSession() { localStorage.removeItem(STORAGE_KEYS.session); }
+
+function getTasks(username) {
+  const d = localStorage.getItem(STORAGE_KEYS.tasks + '_' + username);
+  return d ? JSON.parse(d) : [];
+}
+function saveTasks(username, tasks) { localStorage.setItem(STORAGE_KEYS.tasks + '_' + username, JSON.stringify(tasks)); }
+
+/* ════════════════════════════════
+   CURRENT USER
+════════════════════════════════ */
+let currentUser = null;
+let tasks = [];
+
+function getCurrentUserObj() {
+  return getUsers().find(u => u.username === currentUser?.username) || currentUser;
+}
+
+/* ════════════════════════════════
+   SCREENS
+════════════════════════════════ */
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  // clear errors
+  document.querySelectorAll('.error-msg, .success-msg').forEach(e => e.style.display = 'none');
+}
+
+/* ════════════════════════════════
+   AUTH
+════════════════════════════════ */
+function doLogin() {
+  const username = document.getElementById('login-user').value.trim();
+  const password = document.getElementById('login-pass').value;
+  const users = getUsers();
+  const user = users.find(u => u.username === username && u.password === password);
+  if (!user) {
+    showMsg('login-error', 'Usuário ou senha incorretos.');
+    return;
+  }
+  currentUser = user;
+  saveSession(user);
+  loadApp();
+}
+
+function doRegister() {
+  const name = document.getElementById('reg-name').value.trim();
+  const username = document.getElementById('reg-user').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const pass = document.getElementById('reg-pass').value;
+  const pass2 = document.getElementById('reg-pass2').value;
+
+  if (!name || !username || !pass) { showMsg('reg-error', 'Preencha todos os campos obrigatórios.'); return; }
+  if (pass.length < 6) { showMsg('reg-error', 'A senha deve ter ao menos 6 caracteres.'); return; }
+  if (pass !== pass2) { showMsg('reg-error', 'As senhas não coincidem.'); return; }
+
+  const users = getUsers();
+  if (users.find(u => u.username === username)) { showMsg('reg-error', 'Este nome de usuário já está em uso.'); return; }
+
+  users.push({ username, name, email, password: pass });
+  saveUsers(users);
+  showMsg('reg-success', 'Conta criada com sucesso! Faça login.', true);
+  setTimeout(() => showScreen('login-screen'), 1800);
+}
+
+function doResetPassword() {
+  const username = document.getElementById('forgot-user').value.trim();
+  const newPass = document.getElementById('forgot-new').value;
+  const newPass2 = document.getElementById('forgot-new2').value;
+
+  if (!username || !newPass) { showMsg('forgot-error', 'Preencha todos os campos.'); return; }
+  if (newPass.length < 6) { showMsg('forgot-error', 'A senha deve ter ao menos 6 caracteres.'); return; }
+  if (newPass !== newPass2) { showMsg('forgot-error', 'As senhas não coincidem.'); return; }
+
+  const users = getUsers();
+  const idx = users.findIndex(u => u.username === username);
+  if (idx === -1) { showMsg('forgot-error', 'Usuário não encontrado.'); return; }
+
+  users[idx].password = newPass;
+  saveUsers(users);
+  showMsg('forgot-success', 'Senha redefinida! Faça login.', true);
+  setTimeout(() => showScreen('login-screen'), 1800);
+}
+
+function doLogout() {
+  clearSession(); currentUser = null; tasks = [];
+  showScreen('login-screen');
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+  toggleDropdown(false);
+}
+
+/* ════════════════════════════════
+   APP LOAD
+════════════════════════════════ */
+function loadApp() {
+  const fresh = getCurrentUserObj();
+  currentUser = fresh;
+  tasks = getTasks(currentUser.username);
+
+  const initials = currentUser.name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+  document.getElementById('user-avatar-btn').textContent = initials;
+  document.getElementById('dd-name').textContent = currentUser.name;
+  document.getElementById('dd-email').textContent = currentUser.email || 'Email não configurado';
+
+  showScreen('app-screen');
+  showView('tasks');
+  renderTasks();
+
+  // Check for due task reminders
+  checkReminders();
+}
+
+/* ════════════════════════════════
+   VIEWS
+════════════════════════════════ */
+function showView(view) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + view).classList.add('active');
+  document.getElementById('nav-' + view).classList.add('active');
+  renderTasks();
+}
+
+/* ════════════════════════════════
+   TASKS
+════════════════════════════════ */
+function addTask() {
+  const title = document.getElementById('t-title').value.trim();
+  if (!title) { toast('Informe o título da tarefa!', 'error'); return; }
+
+  const task = {
+    id: Date.now(),
+    title,
+    desc: document.getElementById('t-desc').value.trim(),
+    date: document.getElementById('t-date').value,
+    time: document.getElementById('t-time').value,
+    priority: document.getElementById('t-priority').value,
+    notify: document.getElementById('t-notify').checked,
+    done: false,
+    createdAt: new Date().toISOString()
+  };
+
+  tasks.unshift(task);
+  saveTasks(currentUser.username, tasks);
+  renderTasks();
+
+  // Clear form
+  document.getElementById('t-title').value = '';
+  document.getElementById('t-desc').value = '';
+  document.getElementById('t-date').value = '';
+  document.getElementById('t-time').value = '';
+  document.getElementById('t-notify').checked = false;
+
+  toast('Tarefa adicionada!', 'success');
+
+  if (task.notify) {
+    const userObj = getCurrentUserObj();
+    if (!userObj.email) {
+      toast('Configure um email no seu perfil para receber lembretes.', 'error');
+    } else {
+      scheduleEmailReminder(task, userObj.email);
+    }
+  }
+}
+
+function toggleDone(id) {
+  const idx = tasks.findIndex(t => t.id === id);
+  if (idx === -1) return;
+  tasks[idx].done = !tasks[idx].done;
+  saveTasks(currentUser.username, tasks);
+  renderTasks();
+  toast(tasks[idx].done ? 'Tarefa concluída! ✓' : 'Tarefa reaberta.', 'success');
+}
+
+function deleteTask(id) {
+  tasks = tasks.filter(t => t.id !== id);
+  saveTasks(currentUser.username, tasks);
+  renderTasks();
+  toast('Tarefa removida.', 'error');
+}
+
+function renderTasks() {
+  const pending = tasks.filter(t => !t.done);
+  const done = tasks.filter(t => t.done);
+
+  document.getElementById('pending-count').textContent = pending.length;
+  document.getElementById('done-count').textContent = done.length;
+
+  renderList('task-list', pending, false);
+  renderList('done-list', done, true);
+}
+
+function renderList(containerId, list, isDone) {
+  const el = document.getElementById(containerId);
+  if (!list.length) {
+    el.innerHTML = isDone
+      ? '<div class="task-empty"><div class="icon">🎉</div>Nenhuma tarefa concluída ainda.</div>'
+      : '<div class="task-empty"><div class="icon">📋</div>Nenhuma tarefa pendente. Adicione uma acima!</div>';
+    return;
+  }
+
+  el.innerHTML = list.map(t => {
+    const dateStr = t.date ? formatDate(t.date) + (t.time ? ' às ' + t.time : '') : '';
+    const priorityLabel = { alta: 'Alta', media: 'Média', baixa: 'Baixa' }[t.priority] || '';
+    return `
+      <div class="task-item ${t.done ? 'done' : ''} ${isDone ? 'done-task-item' : ''}">
+        <div class="task-check ${t.done ? 'checked' : ''}" onclick="toggleDone(${t.id})"></div>
+        <div class="task-body">
+          <div class="task-title">${esc(t.title)}</div>
+          ${t.desc ? `<div class="task-desc">${esc(t.desc)}</div>` : ''}
+          <div class="task-meta">
+            ${dateStr ? `<span class="task-tag date">📅 ${dateStr}</span>` : ''}
+            <span class="task-tag priority-${t.priority}">◈ ${priorityLabel}</span>
+            ${t.notify ? '<span class="task-tag email-notify">✉ Lembrete</span>' : ''}
+          </div>
+        </div>
+        <div class="task-actions">
+          ${isDone ? `<button class="revert-btn" onclick="toggleDone(${t.id})">↩ Reabrir</button>` : ''}
+          <button class="icon-btn del" onclick="deleteTask(${t.id})" title="Excluir">🗑</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+/* ════════════════════════════════
+   PROFILE MODAL
+════════════════════════════════ */
+function openProfile() {
+  toggleDropdown(false);
+  const u = getCurrentUserObj();
+  document.getElementById('p-name').value = u.name;
+  document.getElementById('p-email').value = u.email || '';
+  document.getElementById('p-pass').value = '';
+  document.getElementById('p-pass2').value = '';
+  document.querySelectorAll('#profile-modal .error-msg, #profile-modal .success-msg').forEach(e => e.style.display = 'none');
+  document.getElementById('profile-modal').classList.add('open');
+}
+function closeProfile() { document.getElementById('profile-modal').classList.remove('open'); }
+
+function saveProfile() {
+  const name = document.getElementById('p-name').value.trim();
+  const email = document.getElementById('p-email').value.trim();
+  const pass = document.getElementById('p-pass').value;
+  const pass2 = document.getElementById('p-pass2').value;
+
+  if (!name) { showMsg('profile-error', 'O nome não pode ser vazio.'); return; }
+  if (pass && pass.length < 6) { showMsg('profile-error', 'A senha deve ter ao menos 6 caracteres.'); return; }
+  if (pass && pass !== pass2) { showMsg('profile-error', 'As senhas não coincidem.'); return; }
+
+  const users = getUsers();
+  const idx = users.findIndex(u => u.username === currentUser.username);
+  users[idx].name = name;
+  users[idx].email = email;
+  if (pass) users[idx].password = pass;
+  saveUsers(users);
+
+  currentUser = users[idx];
+  saveSession(currentUser);
+
+  const initials = name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+  document.getElementById('user-avatar-btn').textContent = initials;
+  document.getElementById('dd-name').textContent = name;
+  document.getElementById('dd-email').textContent = email || 'Email não configurado';
+
+  showMsg('profile-success', 'Perfil salvo com sucesso!', true);
+  setTimeout(closeProfile, 1500);
+  toast('Perfil atualizado!', 'success');
+}
+
+/* ════════════════════════════════
+   EMAILJS CONFIG
+════════════════════════════════ */
+const EMAILJS_PUBLIC_KEY  = 'Urdi88BMbe_Bij12N';
+const EMAILJS_SERVICE_ID  = 'service_pkw3fcr';
+const EMAILJS_TEMPLATE_ID = 'template_rbwx7iz';
+
+(function initEmailJS() {
+  emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+})();
+
+/* ════════════════════════════════
+   EMAIL REMINDER (real EmailJS)
+════════════════════════════════ */
+async function scheduleEmailReminder(task, email) {
+  const userObj = getCurrentUserObj();
+
+  const params = {
+    to_email:   email,
+    user_name:  userObj.name,
+    task_title: task.title,
+    task_date:  task.date ? formatDate(task.date) : 'Sem data',
+    task_time:  task.time || 'Sem horário',
+    task_desc:  task.desc || '—',
+  };
+
+  try {
+    toast('✉ Enviando lembrete por email...', 'success');
+    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, params);
+    toast(`📧 Email de lembrete enviado para ${email}!`, 'success');
+  } catch (err) {
+    console.error('EmailJS error:', err);
+    toast(`❌ Erro ao enviar email: ${err?.text || err?.message || 'Verifique as configurações do EmailJS.'}`, 'error');
+  }
+}
+
+function checkReminders() {
+  const now = new Date();
+  tasks.filter(t => !t.done && t.date && t.notify).forEach(t => {
+    const dt = new Date(`${t.date}T${t.time || '08:00'}:00`);
+    const diffMin = (dt - now) / 60000;
+    if (diffMin > 0 && diffMin <= 30) {
+      toast(`⏰ Lembrete: "${t.title}" em ${Math.round(diffMin)} min!`, 'success');
+    }
+  });
+}
+
+/* ════════════════════════════════
+   UTILS
+════════════════════════════════ */
+function showMsg(id, msg, isSuccess = false) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.style.display = 'block';
+  if (isSuccess) { el.className = 'success-msg'; } else { el.className = 'error-msg'; }
+}
+
+function toast(msg, type = 'success') {
+  const container = document.getElementById('toast');
+  const item = document.createElement('div');
+  item.className = `toast-item ${type}`;
+  item.textContent = msg;
+  container.appendChild(item);
+  setTimeout(() => { item.style.opacity = '0'; item.style.transition = 'opacity .3s'; setTimeout(() => item.remove(), 300); }, 4000);
+}
+
+function toggleDropdown(force) {
+  const menu = document.getElementById('user-dropdown');
+  if (force === false) { menu.classList.remove('open'); return; }
+  menu.classList.toggle('open');
+}
+
+document.addEventListener('click', (e) => {
+  const dd = document.querySelector('.dropdown');
+  if (dd && !dd.contains(e.target)) toggleDropdown(false);
+  const modal = document.getElementById('profile-modal');
+  if (e.target === modal) closeProfile();
+});
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function formatDate(d) {
+  const [y, m, day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
+
+/* ════════════════════════════════
+   INIT — Check session
+════════════════════════════════ */
+(function init() {
+  const session = getSession();
+  if (session) {
+    const users = getUsers();
+    const user = users.find(u => u.username === session.username);
+    if (user) { currentUser = user; loadApp(); return; }
+  }
+  showScreen('login-screen');
+
+  // Set default date to today
+  const today = new Date().toISOString().split('T')[0];
+  const dateInput = document.getElementById('t-date');
+  if (dateInput) dateInput.value = today;
+})();
+
+// Also set date when app loads
+document.getElementById('app-screen').addEventListener('click', () => {
+  const dateInput = document.getElementById('t-date');
+  if (dateInput && !dateInput.value) {
+    dateInput.value = new Date().toISOString().split('T')[0];
+  }
+}, { once: true });
+</script>
+</body>
+</html>
