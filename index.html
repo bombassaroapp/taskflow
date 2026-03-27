@@ -717,35 +717,67 @@ function requestNotificationPermission() {
   if (!('Notification' in window)) return;
   if (Notification.permission === 'default') {
     Notification.requestPermission().then(perm => {
-      if (perm === 'granted') {
-        toast('🔔 Notificações ativadas!', 'success');
-      }
+      if (perm === 'granted') toast('🔔 Notificações ativadas!', 'success');
     });
   }
 }
 
 function showPushNotification(title, body) {
-  if (!('Notification' in window)) return;
-  if (Notification.permission !== 'granted') return;
-
-  // Use Service Worker notification if available (shows even with app minimized)
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.controller.postMessage({
-      type: 'SHOW_NOTIFICATION',
-      title: title,
-      body: body,
-      icon: 'icon-192.png',
-      badge: 'icon-192.png'
-    });
-  } else {
-    // Fallback: basic Notification API
-    new Notification(title, {
-      body: body,
-      icon: 'icon-192.png',
-      badge: 'icon-192.png',
-      vibrate: [200, 100, 200]
-    });
+  // Try push notification (Android/desktop)
+  if ('Notification' in window && Notification.permission === 'granted') {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'SHOW_NOTIFICATION', title, body,
+        icon: 'icon-192.png', badge: 'icon-192.png'
+      });
+    } else {
+      try { new Notification(title, { body, icon: 'icon-192.png' }); } catch(e) {}
+    }
   }
+  // Always show in-app alarm banner (works on ALL devices including iPhone)
+  showAlarmBanner(title, body);
+}
+
+function showAlarmBanner(title, body) {
+  // Remove existing banner if any
+  const existing = document.getElementById('alarm-banner');
+  if (existing) existing.remove();
+
+  const banner = document.createElement('div');
+  banner.id = 'alarm-banner';
+  banner.innerHTML = `
+    <div style="display:flex;align-items:flex-start;gap:14px;">
+      <div style="font-size:32px;line-height:1;">⏰</div>
+      <div style="flex:1;">
+        <div style="font-size:16px;font-weight:700;margin-bottom:4px;">${title}</div>
+        <div style="font-size:13px;opacity:.85;line-height:1.4;">${body}</div>
+      </div>
+      <button onclick="document.getElementById('alarm-banner').remove()" 
+        style="background:rgba(255,255,255,.2);border:none;border-radius:8px;padding:6px 10px;color:#0d0f14;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;">✕</button>
+    </div>
+  `;
+  banner.style.cssText = `
+    position:fixed;top:0;left:0;right:0;z-index:9999;
+    background:var(--accent);color:#0d0f14;
+    padding:16px 16px calc(16px + env(safe-area-inset-top,0px));
+    padding-top:calc(16px + env(safe-area-inset-top,0px));
+    box-shadow:0 4px 24px rgba(0,0,0,.4);
+    animation:slideDown .4s ease;
+    font-family:'DM Sans',sans-serif;
+  `;
+
+  // Add animation
+  const style = document.createElement('style');
+  style.textContent = '@keyframes slideDown{from{transform:translateY(-100%)}to{transform:none}}';
+  document.head.appendChild(style);
+
+  document.body.appendChild(banner);
+
+  // Vibrate if supported
+  if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300]);
+
+  // Auto-dismiss after 30 seconds
+  setTimeout(() => { if (banner.parentNode) banner.remove(); }, 30000);
 }
 
 /* ════════════════════════════════
@@ -809,6 +841,18 @@ function addTask() {
       } else {
         const dateStr = formatDate(task.date) + (task.time ? ' às ' + task.time : '');
         toast(`✅ Tarefa adicionada! ⏰ Lembrete agendado para ${dateStr}`, 'success');
+
+        // Schedule 15min warning email (if task is more than 15min away)
+        if (diff > 15 * 60 * 1000) {
+          setTimeout(async () => {
+            const current = getTasks(currentUser.username).find(t => t.id === task.id);
+            if (current && !current.done) {
+              await sendWarningEmail(task, userObj.email);
+            }
+          }, diff - 15 * 60 * 1000);
+        }
+
+        // Schedule main reminder at task time
         reminderTimers[task.id] = setTimeout(async () => {
           const current = getTasks(currentUser.username).find(t => t.id === task.id);
           if (current && !current.done) {
@@ -950,6 +994,27 @@ const reminderTimers = {};
 /* ════════════════════════════════
    SEND EMAIL NOW (Web3Forms)
 ════════════════════════════════ */
+async function sendWarningEmail(task, email) {
+  const userObj = getCurrentUserObj();
+  const body = `Olá, ${userObj.name}!\n\n⚠️ AVISO: Você tem uma tarefa em 15 minutos!\n\n📌 Tarefa: ${task.title}\n📅 Data: ${task.date ? formatDate(task.date) : 'Sem data'}\n⏰ Horário: ${task.time || 'Sem horário'}\n📝 Descrição: ${task.desc || '—'}\n\nAbra o TaskFlow para visualizar.`;
+  try {
+    await fetch('https://api.web3forms.com/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({
+        access_key: WEB3FORMS_KEY,
+        subject: `⚠️ Em 15 min: ${task.title}`,
+        from_name: 'TaskFlow',
+        email: email,
+        message: body,
+        botcheck: false
+      })
+    });
+    // Also show in-app banner if app is open
+    showAlarmBanner(`⚠️ Em 15 min: ${task.title}`, `${task.time ? 'às ' + task.time : ''} — ${task.desc || 'Prepare-se!'}`);
+  } catch(e) { console.error('Warning email error:', e); }
+}
+
 async function sendEmailNow(task, email) {
   const userObj = getCurrentUserObj();
 
