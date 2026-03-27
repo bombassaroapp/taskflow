@@ -115,7 +115,7 @@
 
   /* BOTTOM NAV */
   .bottom-nav {
-    position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 400;
     display: flex; align-items: center;
     height: calc(var(--nav-h) + var(--safe-bottom));
     padding-bottom: var(--safe-bottom);
@@ -145,11 +145,12 @@
   /* DROPDOWN MENU */
   .dropdown { position: relative; }
   .dropdown-menu {
-    position: fixed; top: auto; bottom: calc(var(--nav-h) + var(--safe-bottom) + 8px);
+    position: fixed; top: auto;
+    bottom: calc(var(--nav-h) + var(--safe-bottom) + 12px);
     right: 12px; left: 12px;
     background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
     padding: 8px; box-shadow: 0 16px 48px rgba(0,0,0,.6);
-    display: none; z-index: 200; animation: dropUp .2s ease;
+    display: none; z-index: 500; animation: dropUp .2s ease;
   }
   @keyframes dropUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
   .dropdown-menu.open { display: block; }
@@ -561,6 +562,9 @@
     </div>
   </div>
 </div>
+
+<!-- DROPDOWN OVERLAY -->
+<div id="dropdown-overlay" onclick="toggleDropdown(false)" style="display:none;position:fixed;inset:0;z-index:499;"></div>
 
 <!-- TOAST CONTAINER -->
 <div id="toast"></div>
@@ -1109,13 +1113,17 @@ function toast(msg, type = 'success') {
 
 function toggleDropdown(force) {
   const menu = document.getElementById('user-dropdown');
-  if (force === false) { menu.classList.remove('open'); return; }
-  menu.classList.toggle('open');
+  const overlay = document.getElementById('dropdown-overlay');
+  if (force === false) {
+    menu.classList.remove('open');
+    if (overlay) overlay.style.display = 'none';
+    return;
+  }
+  const isOpen = menu.classList.toggle('open');
+  if (overlay) overlay.style.display = isOpen ? 'block' : 'none';
 }
 
 document.addEventListener('click', (e) => {
-  const dd = document.querySelector('.dropdown');
-  if (dd && !dd.contains(e.target)) toggleDropdown(false);
   const modal = document.getElementById('profile-modal');
   if (e.target === modal) closeProfile();
 });
