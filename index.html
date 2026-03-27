@@ -841,47 +841,6 @@ async function sendEmailNow(task, email) {
 }
 
 /* ════════════════════════════════
-   SCHEDULE REMINDER AT TASK TIME
-════════════════════════════════ */
-function scheduleEmailReminder(task, email) {
-  // Cancel existing timer for this task if any
-  if (reminderTimers[task.id]) {
-    clearTimeout(reminderTimers[task.id]);
-    delete reminderTimers[task.id];
-  }
-
-  if (!task.date) {
-    toast('⚠️ Defina uma data e horário para agendar o lembrete.', 'error');
-    return;
-  }
-
-  const taskDateTime = new Date(`${task.date}T${task.time || '08:00'}:00`);
-  const now = new Date();
-  const diff = taskDateTime - now;
-
-  if (diff <= 0) {
-    toast('⚠️ A data/hora da tarefa já passou. O lembrete não foi agendado.', 'error');
-    return;
-  }
-
-  // Max setTimeout is ~24.8 days; for longer, re-schedule closer to the time
-  const MAX_TIMEOUT = 2147483647;
-  const delay = Math.min(diff, MAX_TIMEOUT);
-
-  reminderTimers[task.id] = setTimeout(async () => {
-    // Only send if task is still pending
-    const current = getTasks(currentUser.username).find(t => t.id === task.id);
-    if (current && !current.done) {
-      await sendEmailNow(task, email);
-    }
-    delete reminderTimers[task.id];
-  }, delay);
-
-  const dateStr = formatDate(task.date) + (task.time ? ' às ' + task.time : '');
-  toast(`⏰ Lembrete agendado para ${dateStr}`, 'success');
-}
-
-/* ════════════════════════════════
    RESCHEDULE ALL ON APP LOAD
 ════════════════════════════════ */
 function rescheduleAllReminders() {
